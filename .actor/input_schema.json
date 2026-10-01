@@ -1,0 +1,60 @@
+{
+    "title": "Arabam.com Vehicle Scraper",
+    "description": "Collect structured used vehicle listings from Arabam.com using one URL or a keyword and location. The actor reads Arabam's public search and listing pages directly and enriches each record with its published specifications.",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "url": {
+            "title": "Arabam.com URL",
+            "type": "string",
+            "description": "One Arabam.com search, category, or listing detail URL. URL filters take priority over keyword and location.",
+            "editor": "textfield",
+            "prefill": "https://www.arabam.com/ikinci-el/otomobil"
+        },
+        "keyword": {
+            "title": "Keyword",
+            "type": "string",
+            "description": "Vehicle, make, or model search text used when a URL is not supplied.",
+            "editor": "textfield",
+            "prefill": "volkswagen passat"
+        },
+        "location": {
+            "title": "Location",
+            "type": "string",
+            "description": "Turkish city or location filter.",
+            "editor": "textfield",
+            "prefill": "İstanbul"
+        },
+        "results_wanted": {
+            "title": "Results wanted",
+            "type": "integer",
+            "description": "Maximum number of vehicle records to save.",
+            "minimum": 1,
+            "default": 20,
+            "prefill": 20,
+            "editor": "number"
+        },
+        "max_pages": {
+            "title": "Maximum pages",
+            "type": "integer",
+            "description": "Maximum pages to request per search URL.",
+            "minimum": 1,
+            "default": 10,
+            "prefill": 2,
+            "editor": "number"
+        },
+        "proxyConfiguration": {
+            "title": "Proxy configuration",
+            "type": "object",
+            "description": "Apify Proxy settings. Turkish residential proxies are recommended for Arabam.com.",
+            "editor": "proxy",
+            "default": {
+                "useApifyProxy": true,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+                "countryCode": "TR"
+            }
+        }
+    },
+    "required": [],
+    "additionalProperties": false
+}

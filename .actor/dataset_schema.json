@@ -1,0 +1,67 @@
+{
+    "actorSpecification": 1,
+    "fields": {
+        "listingId": "string",
+        "title": "string",
+        "url": "string",
+        "make": "string",
+        "model": "string",
+        "variant": "string",
+        "year": "number",
+        "mileage": "number",
+        "fuelType": "string",
+        "transmission": "string",
+        "bodyType": "string",
+        "price": "number",
+        "currency": "string",
+        "city": "string",
+        "district": "string",
+        "sellerType": "string",
+        "sellerName": "string",
+        "imageUrls": "array",
+        "scrapedAt": "string",
+        "sourceUrl": "string"
+    },
+    "views": {
+        "overview": {
+            "title": "Vehicle listings",
+            "transformation": {
+                "fields": [
+                    "listingId",
+                    "title",
+                    "url",
+                    "make",
+                    "model",
+                    "variant",
+                    "year",
+                    "mileage",
+                    "fuelType",
+                    "transmission",
+                    "price",
+                    "currency",
+                    "city",
+                    "sellerType"
+                ]
+            },
+            "display": {
+                "component": "table",
+                "properties": {
+                    "listingId": { "label": "ID", "format": "text" },
+                    "title": { "label": "Title", "format": "text" },
+                    "url": { "label": "URL", "format": "link" },
+                    "make": { "label": "Make", "format": "text" },
+                    "model": { "label": "Model", "format": "text" },
+                    "variant": { "label": "Variant", "format": "text" },
+                    "year": { "label": "Year", "format": "number" },
+                    "mileage": { "label": "Mileage", "format": "number" },
+                    "fuelType": { "label": "Fuel", "format": "text" },
+                    "transmission": { "label": "Gear", "format": "text" },
+                    "price": { "label": "Price", "format": "number" },
+                    "currency": { "label": "Currency", "format": "text" },
+                    "city": { "label": "City", "format": "text" },
+                    "sellerType": { "label": "Seller", "format": "text" }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,10 @@
+{
+    "url": "https://www.arabam.com/ikinci-el/otomobil",
+    "results_wanted": 20,
+    "max_pages": 2,
+    "proxyConfiguration": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"],
+        "countryCode": "TR"
+    }
+}
