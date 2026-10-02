@@ -4,7 +4,6 @@
     "max_pages": 2,
     "proxyConfiguration": {
         "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "countryCode": "TR"
+        "apifyProxyGroups": ["RESIDENTIAL"]
     }
 }

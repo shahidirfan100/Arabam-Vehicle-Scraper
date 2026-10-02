@@ -48,13 +48,13 @@ The source may provide additional fields. Those non-empty fields are retained in
 1. Open the Actor in Apify Console.
 2. Add an Arabam.com URL, or enter a keyword and location.
 3. Set `results_wanted` and `max_pages`.
-4. Use Turkish residential Apify Proxy settings when the target requires them.
+4. Use residential Apify Proxy settings when the target requires them.
 5. Run the Actor and review the dataset preview.
 6. Export the data or connect the dataset to your workflow.
 
 When both a URL and search fields are supplied, the URL is used as the primary search scope. URL query parameters are preserved and take priority over the free-text fields.
 
-The Actor reads Arabam's public search and listing pages directly with one stable connection and enriches each listing with its published specifications. No browser session is required, so runs start quickly and stay lightweight. Turkish residential proxy access is recommended so results reflect the live catalogue.
+The Actor reads Arabam's public search and listing pages directly and enriches each listing with its published specifications. No browser session is required, so runs start quickly and stay lightweight. Residential proxy access is recommended so results reflect the live catalogue.
 
 ## Input Parameters
 
@@ -65,7 +65,7 @@ The Actor reads Arabam's public search and listing pages directly with one stabl
 | `location`           | String  | No       | None                                     | City or location filter                            |
 | `results_wanted`     | Integer | No       | `20`                                     | Maximum records to save                            |
 | `max_pages`          | Integer | No       | `10`                                     | Maximum pages per search URL                       |
-| `proxyConfiguration` | Object  | No       | Turkish residential proxy in schema      | Apify Proxy settings, including groups and country |
+| `proxyConfiguration` | Object  | No       | Residential proxy in schema              | Apify Proxy settings, including groups and country |
 
 ## Usage Examples
 
@@ -93,8 +93,7 @@ Build a focused search for newer automatic vehicles in Istanbul:
     "max_pages": 5,
     "proxyConfiguration": {
         "useApifyProxy": true,
-        "apifyProxyGroups": ["RESIDENTIAL"],
-        "countryCode": "TR"
+        "apifyProxyGroups": ["RESIDENTIAL"]
     }
 }
 ```
@@ -138,7 +137,7 @@ Provide a public `/ilan/` URL when you need a single listing lookup. The Actor r
 - Start with `results_wanted: 20` and `max_pages: 2` to check the dataset shape.
 - Use a complete public Arabam.com URL after applying the filters you want on the site; its query parameters are preserved.
 - Page size is handled internally for efficient collection; use `max_pages` and `results_wanted` to control run size.
-- Use a Turkish residential proxy when direct requests are challenged or rate limited.
+- Use a residential proxy when direct requests are challenged or rate limited.
 - Repeat the same input on a schedule to monitor price and inventory changes.
 - Optional fields differ by listing. The Actor omits unavailable values rather than filling records with empty placeholders.
 

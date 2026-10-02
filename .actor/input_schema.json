@@ -46,12 +46,11 @@
         "proxyConfiguration": {
             "title": "Proxy configuration",
             "type": "object",
-            "description": "Apify Proxy settings. Turkish residential proxies are recommended for Arabam.com.",
+            "description": "Apify Proxy settings. Residential proxies are recommended for Arabam.com.",
             "editor": "proxy",
             "default": {
                 "useApifyProxy": true,
-                "apifyProxyGroups": ["RESIDENTIAL"],
-                "countryCode": "TR"
+                "apifyProxyGroups": ["RESIDENTIAL"]
             }
         }
     },

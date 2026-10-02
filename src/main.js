@@ -15,10 +15,11 @@ import {
 
 const MAX_ATTEMPTS = 5;
 const PAGE_SIZE = 50;
-const DETAIL_CONCURRENCY = 2;
-const REQUEST_BASE_INTERVAL_MS = 600;
-const REQUEST_MAX_INTERVAL_MS = 10_000;
-const MAX_RETRY_DELAY_MS = 30_000;
+const PROXY_SESSION_COUNT = 16;
+const REQUEST_TIMEOUT_MS = 30_000;
+const VALIDATION_TIMEOUT_MS = 12_000;
+const MAX_RETRY_DELAY_MS = 20_000;
+const NON_RETRYABLE_STATUS = new Set([400, 401, 404, 410, 422]);
 const REQUEST_HEADERS = { 'Accept-Language': 'tr-TR,tr;q=0.9,en;q=0.8' };
 
 await Actor.init();
@@ -48,67 +49,40 @@ function retryDelay(attempt, baseMs = 1000) {
     return exponential + Math.floor(Math.random() * 500);
 }
 
-function createAdaptiveRateLimiter(baseIntervalMs, maxIntervalMs) {
-    let interval = baseIntervalMs;
-    let nextAllowed = 0;
-    return {
-        acquire: async () => {
-            const now = Date.now();
-            const waitMs = Math.max(0, nextAllowed - now);
-            nextAllowed = Math.max(now, nextAllowed) + interval;
-            if (waitMs > 0) await sleep(waitMs);
-        },
-        onRateLimit: () => {
-            interval = Math.min(maxIntervalMs, Math.round(interval * 1.5));
-        },
-        onSuccess: () => {
-            interval = Math.max(baseIntervalMs, Math.round(interval * 0.98));
-        },
-        getInterval: () => interval,
-    };
-}
-
-async function fetchText(client, url, rateLimit) {
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-        if (rateLimit) await rateLimit.acquire();
-        let response;
+async function fetchText(clients, baseIndex, url) {
+    let lastError;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        const client = clients[(baseIndex + attempt) % clients.length];
         try {
-            response = await client.fetch(url, { headers: REQUEST_HEADERS });
+            const response = await client.fetch(url, {
+                headers: REQUEST_HEADERS,
+                timeout: REQUEST_TIMEOUT_MS,
+            });
+            if (response.status === 429 || response.status >= 500) {
+                const retryAfter = Number(response.headers?.get?.('retry-after'));
+                const wait =
+                    Number.isFinite(retryAfter) && retryAfter > 0
+                        ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
+                        : retryDelay(attempt + 1);
+                if (attempt === MAX_ATTEMPTS - 1) throw new HttpStatusError(url, response.status);
+                log.debug(`HTTP ${response.status} on ${url}; retrying in ${wait}ms`);
+                await sleep(wait);
+                continue;
+            }
+            if (!response.ok) throw new HttpStatusError(url, response.status);
+            const text = await response.text();
+            if (!text || text.length < 200) throw new Error(`Empty response from ${url}`);
+            return text;
         } catch (error) {
-            if (attempt === MAX_ATTEMPTS) throw error;
-            const wait = retryDelay(attempt);
-            log.warning(`Request error for ${url}: ${error.message}; retrying in ${wait}ms`);
+            lastError = error;
+            if (error instanceof HttpStatusError && NON_RETRYABLE_STATUS.has(error.status)) throw error;
+            if (attempt === MAX_ATTEMPTS - 1) throw error;
+            const wait = retryDelay(attempt + 1);
+            log.debug(`Request error for ${url}: ${error.message}; retrying in ${wait}ms`);
             await sleep(wait);
-            continue;
         }
-        if (response.status === 429) {
-            if (attempt === MAX_ATTEMPTS) throw new HttpStatusError(url, 429);
-            if (rateLimit) rateLimit.onRateLimit();
-            const retryAfter = Number(response.headers?.get?.('retry-after'));
-            const wait =
-                Number.isFinite(retryAfter) && retryAfter > 0
-                    ? Math.min(retryAfter * 1000, MAX_RETRY_DELAY_MS)
-                    : retryDelay(attempt, 2000);
-            log.warning(
-                `Rate limited (429) on ${url}; waiting ${wait}ms (attempt ${attempt}/${MAX_ATTEMPTS}, interval ${rateLimit?.getInterval?.()}ms)`,
-            );
-            await sleep(wait);
-            continue;
-        }
-        if (response.status >= 500) {
-            if (attempt === MAX_ATTEMPTS) throw new HttpStatusError(url, response.status);
-            const wait = retryDelay(attempt);
-            log.warning(`Server error ${response.status} on ${url}; retrying in ${wait}ms`);
-            await sleep(wait);
-            continue;
-        }
-        if (!response.ok) throw new HttpStatusError(url, response.status);
-        const text = await response.text();
-        if (!text || text.length < 200) throw new Error(`Empty response from ${url}`);
-        if (rateLimit) rateLimit.onSuccess();
-        return text;
     }
-    throw new Error(`Request failed after ${MAX_ATTEMPTS} attempts: ${url}`);
+    throw lastError || new Error(`Request failed after ${MAX_ATTEMPTS} attempts: ${url}`);
 }
 
 function dedupe(items) {
@@ -121,15 +95,18 @@ function dedupe(items) {
     });
 }
 
-async function mapWithConcurrency(items, limit, mapper) {
+async function enrichWithClients(items, clients, mapper) {
     const results = new Array(items.length);
     let index = 0;
-    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-        while (index < items.length) {
-            const current = index++;
-            results[current] = await mapper(items[current]);
-        }
-    });
+    const workerCount = Math.min(clients.length, items.length) || 1;
+    const workers = Array.from({ length: workerCount }, (_, workerId) =>
+        (async () => {
+            while (index < items.length) {
+                const current = index++;
+                results[current] = await mapper(items[current], workerId);
+            }
+        })(),
+    );
     await Promise.all(workers);
     return results;
 }
@@ -147,7 +124,7 @@ const activeKeyword = useSearchFields ? keyword : undefined;
 const activeLocation = useSearchFields ? location : undefined;
 
 if (activeLocation && !cityIdFromLocation(activeLocation)) {
-    log.warning(`Unrecognized location "${activeLocation}"; running without a city filter.`);
+    log.info(`Unrecognized location "${activeLocation}"; running without a city filter.`);
 }
 
 const proxyConfig = input.proxyConfiguration;
@@ -158,12 +135,39 @@ const proxyConfiguration =
     (isApifyCloud && useApifyProxy) || hasCustomProxy
         ? await Actor.createProxyConfiguration(proxyConfig)
         : undefined;
-const proxyUrl = proxyConfiguration ? await proxyConfiguration.newUrl(`arabam_${Date.now()}`) : undefined;
-const client = new Impit({ browser: 'chrome', ...(proxyUrl && { proxyUrl }) });
-const rateLimit = createAdaptiveRateLimiter(REQUEST_BASE_INTERVAL_MS, REQUEST_MAX_INTERVAL_MS);
+
+let sessionUrls = [undefined];
+if (proxyConfiguration) {
+    sessionUrls = await Promise.all(
+        Array.from({ length: PROXY_SESSION_COUNT }, (_, index) =>
+            proxyConfiguration.newUrl(`arabam_${Date.now()}_${index}`),
+        ),
+    );
+}
+const allClients = sessionUrls.map((url) => new Impit({ browser: 'chrome', ...(url && { proxyUrl: url }) }));
+
+async function isClientHealthy(client) {
+    try {
+        const response = await client.fetch(`${DEFAULT_SEARCH_URL}?take=1&page=1`, {
+            headers: REQUEST_HEADERS,
+            timeout: VALIDATION_TIMEOUT_MS,
+        });
+        return response.status === 200;
+    } catch {
+        return false;
+    }
+}
+
+let clients = allClients;
+if (allClients.length > 1) {
+    const health = await Promise.all(allClients.map(isClientHealthy));
+    const healthy = allClients.filter((_, index) => health[index]);
+    if (healthy.length) clients = healthy;
+    log.info(`Healthy proxy sessions: ${clients.length}/${allClients.length}`);
+}
 
 log.info(
-    `Starting Arabam.com HTML extraction | sources=${sources.length} | results=${resultsWanted} | maxPages=${maxPages}`,
+    `Starting Arabam.com HTML extraction | sources=${sources.length} | results=${resultsWanted} | maxPages=${maxPages} | clients=${clients.length}`,
 );
 
 let saved = 0;
@@ -176,7 +180,7 @@ for (const sourceUrl of sources) {
 
     if (detailId && /\/ilan\//i.test(sourceUrl)) {
         try {
-            const html = await fetchText(client, sourceUrl, rateLimit);
+            const html = await fetchText(clients, 0, sourceUrl);
             const record = buildRecord(html, { listingId: detailId, url: sourceUrl }, sourceUrl);
             await Actor.pushData(record);
             saved++;
@@ -196,7 +200,7 @@ for (const sourceUrl of sources) {
         });
         let items;
         try {
-            const html = await fetchText(client, searchUrl, rateLimit);
+            const html = await fetchText(clients, 0, searchUrl);
             items = parseSearchItems(html);
             pagesProcessed++;
         } catch (error) {
@@ -210,13 +214,13 @@ for (const sourceUrl of sources) {
         }
 
         const wanted = items.slice(0, resultsWanted - saved);
-        const records = await mapWithConcurrency(wanted, DETAIL_CONCURRENCY, async (item) => {
+        const records = await enrichWithClients(wanted, clients, async (item, workerId) => {
             if (!item.url) return item;
             try {
-                const html = await fetchText(client, item.url, rateLimit);
+                const html = await fetchText(clients, workerId, item.url);
                 return buildRecord(html, item, sourceUrl);
             } catch (error) {
-                log.warning(`Detail enrichment failed for ${item.url}: ${error.message}`);
+                log.debug(`Detail enrichment skipped for ${item.url}: ${error.message}`);
                 return cleanRecord({ ...item, scrapedAt: new Date().toISOString(), sourceUrl });
             }
         });
@@ -240,7 +244,7 @@ for (const sourceUrl of sources) {
     }
 }
 
-log.info(`Finished | saved=${saved} | pages=${pagesProcessed} | finalInterval=${rateLimit.getInterval()}ms`);
+log.info(`Finished | saved=${saved} | pages=${pagesProcessed}`);
 if (saved === 0) {
     throw new Error('No records were saved. Check the Arabam URL, filters, and Turkish proxy access.');
 }

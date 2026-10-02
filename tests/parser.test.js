@@ -17,7 +17,8 @@ insiderArray.push({
                         "product_image_url": "https://arbstorage.mncdn.com/ilanfotograflari/2026/10/01/44522709/x_image_for_silan_44522709_580x435.jpg"
                     })
 }
-</script>`;
+</script>
+<script type="application/ld+json">[{"@context":"https://schema.org","@type":"Vehicle","url":"https://www.arabam.com/ilan/galeriden-satilik-hyundai-i20/2021-i20/44522709","mileageFromOdometer":{"@type":"QuantitativeValue","value":100000,"unitCode":"KMT"},"manufacturer":"Hyundai","brand":{"@type":"Brand","name":"Hyundai"},"vehicleModelDate":2021,"productionDate":2021,"name":"Hyundai i20 1.4 MPI Elite","image":"https://arbstorage.mncdn.com/ilanfotograflari/2026/10/01/44522709/x_image_for_silan_44522709_120x90.jpg","driveWheelConfiguration":"Önden Çekiş","offers":{"@type":"Offer","priceCurrency":"TRY","price":1364750,"url":"https://www.arabam.com/ilan/galeriden-satilik-hyundai-i20/2021-i20/44522709"}}]</script>`;
 
 const DETAIL_HTML = `
 <script>
@@ -43,10 +44,12 @@ describe('Arabam parser', () => {
             make: 'Hyundai',
             model: 'i20',
             variant: '1.4 MPI Elite',
+            year: 2021,
+            mileage: 100000,
             price: 1364750,
             currency: 'TRY',
         });
-        expect(items[0].imageUrls[0]).toContain('_580x435.jpg');
+        expect(items[0].imageUrls[0]).toContain('_1920x1080.jpg');
     });
 
     it('merges search data with detail collectDataObject and specs', () => {

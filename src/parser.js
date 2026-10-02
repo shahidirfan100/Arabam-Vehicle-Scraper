@@ -291,21 +291,57 @@ function insiderUrl(block) {
     return value.startsWith('http') ? value : `${BASE_URL}${value}`;
 }
 
+function parseVehicleLookup(html) {
+    const byUrl = new Map();
+    const byId = new Map();
+    for (const node of parseJsonLd(html)) {
+        if (node?.['@type'] !== 'Vehicle') continue;
+        if (node.url) {
+            byUrl.set(node.url, node);
+            const id = getListingId(node.url);
+            if (id) byId.set(id, node);
+        }
+    }
+    return { byUrl, byId };
+}
+
+function vehicleYear(vehicle) {
+    return firstDefined(vehicle?.vehicleModelDate, vehicle?.productionDate, vehicle?.modelDate);
+}
+
+function vehicleMileage(vehicle) {
+    const value = vehicle?.mileageFromOdometer;
+    if (value && typeof value === 'object') return firstDefined(value.value, value);
+    return value;
+}
+
 export function parseSearchItems(html) {
+    const { byUrl, byId } = parseVehicleLookup(html);
     return extractBalancedBlocks(html, 'insiderArray.push(')
         .map((block) => {
             const names = taxonomyNames(taxonomyFromBlock(block));
             const image = stringField(block, 'product_image_url');
+            const listingId = stringField(block, 'id');
+            const url = insiderUrl(block);
+            const vehicle = byUrl.get(url) || (listingId ? byId.get(listingId) : undefined);
+            const vehicleImage = vehicle?.image;
+            let imageUrls = [];
+            if (Array.isArray(vehicleImage)) imageUrls = vehicleImage;
+            else if (vehicleImage) imageUrls = [vehicleImage];
+            else if (image) imageUrls = [image];
             return cleanRecord({
-                listingId: stringField(block, 'id'),
-                title: stringField(block, 'name'),
-                url: insiderUrl(block),
-                make: names[1],
+                listingId,
+                title: stringField(block, 'name') || vehicle?.name,
+                url,
+                make: names[1] || vehicle?.brand?.name || vehicle?.manufacturer,
                 model: names[2],
                 variant: names.slice(3).join(' ') || undefined,
-                price: insiderPrice(block),
-                currency: stringField(block, 'currency') || 'TRY',
-                imageUrls: image ? [image] : undefined,
+                year: numberFrom(vehicleYear(vehicle)),
+                mileage: numberFrom(vehicleMileage(vehicle)),
+                drivetrain: vehicle?.driveWheelConfiguration,
+                price: firstDefined(numberFrom(vehicle?.offers?.price), insiderPrice(block)),
+                currency: vehicle?.offers?.priceCurrency || stringField(block, 'currency') || 'TRY',
+                imageUrls: imageUrls.map(fullSizeImage),
             });
         })
         .filter((item) => item.listingId || item.url);
@@ -426,9 +462,11 @@ export function buildRecord(html, seed, sourceUrl) {
         make,
         model,
         variant,
-        year: numberFrom(firstDefined(collect.Year, specValue(specs, 'Yıl', 'Model Yılı'), gtm.year)),
+        year: numberFrom(
+            firstDefined(collect.Year, specValue(specs, 'Yıl', 'Model Yılı'), gtm.year, seed.year),
+        ),
         mileage: numberFrom(
-            firstDefined(collect.Km, specValue(specs, 'Kilometre', 'km'), gtm.kilometer),
+            firstDefined(collect.Km, specValue(specs, 'Kilometre', 'km'), gtm.kilometer, seed.mileage),
         ),
         fuelType: firstDefined(collect.Fuel, specValue(specs, 'Yakıt tipi', 'Yakıt'), gtm.fuel),
         transmission: firstDefined(
